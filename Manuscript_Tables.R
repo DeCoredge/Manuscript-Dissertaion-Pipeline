@@ -53,26 +53,27 @@ rm(list = ls())
 # Use data from csv file to create tables
 species_table <- read.csv("Trawl_Species_List.csv", header = TRUE, sep = ",", check.names = FALSE)
 
-# Define a theme where the second column ("Scientific Name") is dynamically italicized
+# Build a fontface matrix with column 3 ("Taxon") set to italic
+font_matrix <- matrix("plain", nrow = nrow(species_table), ncol = ncol(species_table))
+font_matrix[, 3] <- "italic"
+
+# Define the theme using font_matrix
 table_theme <- ttheme_default(
-  core = list(fg_params = list(col = "grey",  # Matrix approach: Check if column index is 2, make it italic, otherwise plain
-  fontface = matrix(ifelse(col(matrix(NA, nrow=nrow(species_table), 
-    ncol=ncol(species_table))) == 2, 
-       "italic", "plain"), nrow=nrow(species_table), 
-    ncol=ncol(species_table)))), colhead = list(fg_params = list(col = "blue")))
+  core = list(
+    fg_params = list(
+      fontface = font_matrix
+    )
+  )
+)
 
-#Create Table, Customize, and View it
-species_table <- tableGrob(species_table)
+# Pass `theme = table_theme` into tableGrob()
+species_grob <- tableGrob(species_table, theme = table_theme, rows = NULL)
 
-table_grob<- ttheme_default(core = list(fg_params = list(col = "grey")),
-                            colhead = list(fg_params = list(col = "blue")))
-
-grid.draw(species_table)
-
+# Draw the table
+grid.draw(species_grob)
 
 #Clear current working environment
-rm(list = ls())
-
+rm(list = ls()
 
 # Use data from csv file to create tables
 statistic_ranking_table <- read.csv("Biomass_eDNA_Statistics_Station.csv", header = TRUE,  sep = ",", check.names = FALSE)
