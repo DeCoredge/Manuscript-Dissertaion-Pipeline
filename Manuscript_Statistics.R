@@ -24,10 +24,8 @@ p1 <- ggplot(ceph_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
   geom_smooth(aes(color = sample_type, fill = sample_type), 
               method = "lm", linetype = "dashed", alpha = 0.15) +
   scale_y_log10(labels = scales::label_log()) +
-  labs(
-    title = "Cephalopod Biomass ~ Ceph18s Mean Relative Read counts\nLog-Linear Relationship",
-    x = "Ceph18s Mean Relative Read Counts",
-    y = "Mean Cephalopod Biomass (Log10 Scale)",
+  labs(x = NULL,
+    y = NULL,
     color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across all Trawls (Wide)"
   ) +
   theme_minimal() +
@@ -39,10 +37,8 @@ p2 <- ggplot(invert_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weigh
   geom_smooth(aes(color = sample_type, fill = sample_type), 
               method = "lm", linetype = "dashed", alpha = 0.15) +
   scale_y_log10(labels = scales::label_log()) +
-  labs(
-    title = "Invertebrate Biomass ~ Leray COI Mean Relative Read counts\nLog-Linear Relationship",
-    x = "Leray COI Mean Relative Read Counts",
-    y = "Mean Invertebrate Biomass (Log10 Scale)"
+  labs(x = NULL,
+    y = NULL
   ) +
   theme_minimal() +
   theme(legend.position = "none")
@@ -59,9 +55,8 @@ p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
     labels = c("Bottom_metaprobe" = "Bottom Metaprobe", "Slush" = "Slush", "Top_metaprobe" = "Top Metaprobe")) +
   scale_fill_manual(name = "eDNA Collection Method Across All Trawls (Wide)", values = c("Bottom_metaprobe" = "#F8766D", "Slush" = "#00BA38", "Top_metaprobe" = "#619CFF"),
                     labels = c("Bottom_metaprobe" = "Bottom Metaprobe", "Slush" = "Slush", "Top_metaprobe" = "Top Metaprobe")) +
-  labs(title = "Fish Biomass ~ MiFish12s Mean Relative Read counts\nLog-Linear Relationship",
-       x = "MiFish12s Mean Relative Read Counts",
-       y = "Mean Fish Biomass (Log10 Scale)",
+  labs(x = NULL,
+       y = NULL,
        color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across All Trawls (Wide)") +
   theme_minimal() +
   theme(legend.position = "right")
@@ -145,7 +140,24 @@ shared_legend <- get_legend(p3)
 p3 <- p3 + theme(legend.position = "none")
 
 # Arrange the three clean charts side-by-side cleanly
-plots_row <- plot_grid(p1, p2, p3, ncol = 3, align = 'h', axis = 'b')
+plots_row <- plot_grid(p3, p2, p1, ncol = 3, align = 'h', axis = 'b',
+                       labels = c("A", "B", "C"),  # Adds panel labels
+                       label_size = 16,             # Adjust font size of A, B, C
+                       label_fontface = "bold")
+
+# Add outer padding (left and bottom) so the shared axis titles don't overlap the plots
+plots_padded <- ggdraw(plots_row) +
+  theme(plot.margin = margin(t = 5, r = 5, b = 30, l = 30))
+
+# Draw the single shared X and Y axis titles onto the padded grid
+plots_with_axes <- plots_padded +
+  draw_label(
+    "Mean Relative Read Counts", 
+    x = 0.5, y = 0.02, vjust = 0, size = 14, fontface = "bold"
+  ) +
+  draw_label(
+    "Mean Biomass (Log10 Scale)", 
+    x = 0.015, y = 0.5, angle = 90, vjust = 1, size = 14, fontface = "bold")
 
 # Append the single clean legend block back to the right margin side
 final_composite_plot <- plot_grid(plots_row, shared_legend, rel_widths = c(3, 0.4))
