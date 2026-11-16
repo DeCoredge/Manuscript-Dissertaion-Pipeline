@@ -72,8 +72,10 @@ species_grob <- tableGrob(species_table, theme = table_theme, rows = NULL)
 # Draw the table
 grid.draw(species_grob)
 
+
 #Clear current working environment
-rm(list = ls()
+rm(list = ls())
+
 
 # Use data from csv file to create tables
 statistic_ranking_table <- read.csv("Biomass_eDNA_Statistics_Station.csv", header = TRUE,  sep = ",", check.names = FALSE)
@@ -81,13 +83,20 @@ statistic_ranking_table <- read.csv("Biomass_eDNA_Statistics_Station.csv", heade
 # Convert the raw symbol '⍴' to the word 'rho' so tableGrob's math engine can read it
 colnames(statistic_ranking_table) <- gsub("⍴", "rho", colnames(statistic_ranking_table))
 
+# Format headers using plotmath bold() so every heading renders in bold
+colnames(statistic_ranking_table) <- c(
+  "bold('Trawl')",
+  "bold('MiFish12S r (n)')",
+  "bold('MiFish12S' ~ rho ~ '(n)')", # Renders actual Greek ρ in bold
+  "bold('LerayCOI r (n)')",
+  "bold('LerayCOI' ~ rho ~ '(n)')"   # Renders actual Greek ρ in bold
+)
 
-# Create Custom Theme and turn on 'parse = TRUE' to process mathematical expressions
+# Create Custom Theme with parse = TRUE
 table_grob <- ttheme_default(
   core = list(fg_params = list(col = "black")),
-  colhead = list(fg_params = list(col = "blue2")),
-  parse = TRUE #<-- IMPORTANT: Tells R to translate "rho" into the Greek letter 
-)
+  colhead = list(fg_params = list(col = "black")),
+  parse = TRUE)
 
 # Pass the custom theme to your tableGrob
 trawl_statistics <- tableGrob(statistic_ranking_table, theme = table_grob)
