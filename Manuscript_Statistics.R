@@ -129,12 +129,38 @@ fish_interaction <- lm(asin(sqrt(mean_edna_rel_read_count)) ~ log10(mean_trawl_w
 nested_f_test <- anova(fish_lm_reduced, fish_interaction)
 print(nested_f_test)
 
+# Rebuild Plot 3 to guarantee the legend is present before extraction
+p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
+  geom_point(aes(color = sample_type), size = 2.5) +
+  geom_smooth(aes(color = sample_type, fill = sample_type), 
+              method = "lm", linetype = "dashed", alpha = 0.15) +
+  scale_y_log10(labels = scales::label_log()) +
+  scale_color_manual(
+    name = "eDNA Collection Method Across All Trawls",
+    values = c("Bottom_metaprobe" = "#F8766D", "Slush" = "#00BA38", "Top_metaprobe" = "#619CFF"),
+    labels = c("Bottom_metaprobe" = "Bottom Metaprobe", "Slush" = "Slush", "Top_metaprobe" = "Top Metaprobe")) +
+  scale_fill_manual(
+    name = "eDNA Collection Method Across All Trawls", 
+    values = c("Bottom_metaprobe" = "#F8766D", "Slush" = "#00BA38", "Top_metaprobe" = "#619CFF"),
+    labels = c("Bottom_metaprobe" = "Bottom Metaprobe", "Slush" = "Slush", "Top_metaprobe" = "Top Metaprobe")) +
+  labs(x = NULL, 
+    y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
 # ==============================================================================
 # 6. EXTRACT LEGEND & ASSEMBLE SIDE-BY-SIDE WITHOUT THE "+" ERROR
 # ==============================================================================
 
 # Extract the shared legend structure from plot 3
 shared_legend <- get_legend(p3)
+
+# Extract the shared legend (compatible with ggplot2 >= 3.5.0)
+shared_legend <- get_plot_component(p3, "guide-box-right", return_all = TRUE)
+
+# Fallback in case an older ggplot2 version is installed
+if (is.null(shared_legend) || length(shared_legend) == 0) {
+  shared_legend <- get_legend(p3)}
 
 # Remove the legend from plot 3 so it matches the other two plots visually
 p3 <- p3 + theme(legend.position = "none")
@@ -145,22 +171,31 @@ plots_row <- plot_grid(p3, p2, p1, ncol = 3, align = 'h', axis = 'b',
                        label_size = 16,             # Adjust font size of A, B, C
                        label_fontface = "bold")
 
-# Add outer padding (left and bottom) so the shared axis titles don't overlap the plots
-plots_padded <- ggdraw(plots_row) +
-  theme(plot.margin = margin(t = 5, r = 5, b = 30, l = 30))
+# 2. Add the single shared X-axis title directly underneath the 3-plot row
+plots_with_x <- add_sub(
+  plots_row, 
+  "Mean Relative Read Counts", 
+  vpadding = grid::unit(1, "lines"),
+  y = 0.5, 
+  x = 0.5, 
+  size = 14, 
+  fontface = "bold")
 
-# Draw the single shared X and Y axis titles onto the padded grid
-plots_with_axes <- plots_padded +
-  draw_label(
-    "Mean Relative Read Counts", 
-    x = 0.5, y = 0.02, vjust = 0, size = 14, fontface = "bold"
-  ) +
+# 3. Create a dedicated vertical label object for the shared Y-axis title
+y_axis_label <- ggdraw() + 
   draw_label(
     "Mean Biomass (Log10 Scale)", 
-    x = 0.015, y = 0.5, angle = 90, vjust = 1, size = 14, fontface = "bold")
+    angle = 90, 
+    size = 14, 
+    fontface = "bold")
 
-# Append the single clean legend block back to the right margin side
-final_composite_plot <- plot_grid(plots_row, shared_legend, rel_widths = c(3, 0.4))
+# 4. Combine the Y-axis label, the 3-plot grid (with X-axis), and the shared legend
+final_composite_plot <- plot_grid(
+  y_axis_label, 
+  plots_with_x, 
+  shared_legend, 
+  ncol = 3, 
+  rel_widths = c(0.08, 3, 0.45)) # Allocates dedicated space for Y-axis, plots, and legend
 
 # Output display and save operations
 print(final_composite_plot)
