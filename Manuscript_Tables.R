@@ -55,7 +55,7 @@ species_table <- read.csv("Trawl_Species_List.csv", header = TRUE, sep = ",", ch
 
 # Build a fontface matrix with column 3 ("Taxon") set to italic
 font_matrix <- matrix("plain", nrow = nrow(species_table), ncol = ncol(species_table))
-font_matrix[, 3] <- "italic"
+font_matrix[, 4] <- "italic"
 
 # Define the theme using font_matrix
 table_theme <- ttheme_default(
