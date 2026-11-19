@@ -20,34 +20,34 @@ invert_data <- read_csv("relative_reads_invertebrate_trawl_species_trawl_wide.cs
 
 # Plot 1: Cephalopods
 p1 <- ggplot(ceph_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
-  geom_point(aes(color = sample_type), size = 2.5) +
+  geom_point(aes(color = sample_type), size = 4) +
   geom_smooth(aes(color = sample_type, fill = sample_type), 
-              method = "lm", linetype = "dashed", alpha = 0.15) +
+              method = "lm", linetype = "dashed", alpha = 0.35) +
   scale_y_log10(labels = scales::label_log()) +
   labs(x = NULL,
     y = NULL,
     color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across all Trawls (Wide)"
   ) +
-  theme_minimal() +
-  theme(legend.position = "none") # Handled globally by cowplot below
+  theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
+  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none") # Handled globally by cowplot below
 
 # Plot 2: Invertebrates
 p2 <- ggplot(invert_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
-  geom_point(aes(color = sample_type), size = 2.5) +
+  geom_point(aes(color = sample_type), size = 4) +
   geom_smooth(aes(color = sample_type, fill = sample_type), 
-              method = "lm", linetype = "dashed", alpha = 0.15) +
+              method = "lm", linetype = "dashed", alpha = 0.35) +
   scale_y_log10(labels = scales::label_log()) +
   labs(x = NULL,
     y = NULL
   ) +
-  theme_minimal() +
-  theme(legend.position = "none")
+  theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
+  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none")
 
 # Plot 3: Fish (Keep the legend on this one to extract it clean)
 p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
-  geom_point(aes(color = sample_type), size = 2.5) +
+  geom_point(aes(color = sample_type), size = 4) +
   geom_smooth(aes(color = sample_type, fill = sample_type), 
-              method = "lm", linetype = "dashed", alpha = 0.15) +
+              method = "lm", linetype = "dashed", alpha = 0.35) +
   scale_y_log10(labels = scales::label_log()) +
   scale_color_manual(
     name = "eDNA Collection Method Across All Trawls (Wide)",
@@ -58,8 +58,8 @@ p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
   labs(x = NULL,
        y = NULL,
        color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across All Trawls (Wide)") +
-  theme_minimal() +
-  theme(legend.position = "right")
+  theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
+theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
 
 
 # ==============================================================================
@@ -131,9 +131,9 @@ print(nested_f_test)
 
 # Rebuild Plot 3 to guarantee the legend is present before extraction
 p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
-  geom_point(aes(color = sample_type), size = 2.5) +
+  geom_point(aes(color = sample_type), size = 4) +
   geom_smooth(aes(color = sample_type, fill = sample_type), 
-              method = "lm", linetype = "dashed", alpha = 0.15) +
+              method = "lm", linetype = "dashed", alpha = 0.35) +
   scale_y_log10(labels = scales::label_log()) +
   scale_color_manual(
     name = "eDNA Collection Method Across All Trawls",
@@ -145,8 +145,8 @@ p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
     labels = c("Bottom_metaprobe" = "Bottom Metaprobe", "Slush" = "Slush", "Top_metaprobe" = "Top Metaprobe")) +
   labs(x = NULL, 
     y = NULL) +
-  theme_minimal() +
-  theme(legend.position = "right")
+  theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
+  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
 
 # ==============================================================================
 # 6. EXTRACT LEGEND & ASSEMBLE SIDE-BY-SIDE WITHOUT THE "+" ERROR
@@ -168,7 +168,7 @@ p3 <- p3 + theme(legend.position = "none")
 # Arrange the three clean charts side-by-side cleanly
 plots_row <- plot_grid(p3, p2, p1, ncol = 3, align = 'h', axis = 'b',
                        labels = c("A", "B", "C"),  # Adds panel labels
-                       label_size = 16,             # Adjust font size of A, B, C
+                       label_size = 20,             # Adjust font size of A, B, C
                        label_fontface = "bold")
 
 # 2. Add the single shared X-axis title directly underneath the 3-plot row
@@ -178,7 +178,7 @@ plots_with_x <- add_sub(
   vpadding = grid::unit(1, "lines"),
   y = 0.5, 
   x = 0.5, 
-  size = 14, 
+  size = 20, 
   fontface = "bold")
 
 # 3. Create a dedicated vertical label object for the shared Y-axis title
@@ -186,7 +186,7 @@ y_axis_label <- ggdraw() +
   draw_label(
     "Mean Biomass (Log10 Scale)", 
     angle = 90, 
-    size = 14, 
+    size = 20, 
     fontface = "bold")
 
 # 4. Combine the Y-axis label, the 3-plot grid (with X-axis), and the shared legend
