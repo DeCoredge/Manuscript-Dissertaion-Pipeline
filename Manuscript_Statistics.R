@@ -29,7 +29,7 @@ p1 <- ggplot(ceph_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
     color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across all Trawls (Wide)"
   ) +
   theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
-  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none") # Handled globally by cowplot below
+  theme(legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none") # Handled globally by cowplot below
 
 # Plot 2: Invertebrates
 p2 <- ggplot(invert_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
@@ -41,7 +41,7 @@ p2 <- ggplot(invert_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weigh
     y = NULL
   ) +
   theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
-  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none")
+  theme(legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "none")
 
 # Plot 3: Fish (Keep the legend on this one to extract it clean)
 p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)) +
@@ -59,7 +59,7 @@ p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
        y = NULL,
        color = "eDNA Collection Method Across All Trawls (Wide)", fill = "eDNA Collection Method Across All Trawls (Wide)") +
   theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
-theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
+theme(legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
 
 
 # ==============================================================================
@@ -146,7 +146,7 @@ p3 <- ggplot(fish_data, aes(x = mean_edna_rel_read_count, y = mean_trawl_weight)
   labs(x = NULL, 
     y = NULL) +
   theme_bw() + theme( axis.line = element_line(color = "black", linewidth = 0.9, linetype = "solid")) +
-  theme(legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
+  theme(legend.title = element_text(size = 12, face = "bold"), legend.text = element_text(size = 16, face = "bold")) + theme(legend.position = "right")
 
 # ==============================================================================
 # 6. EXTRACT LEGEND & ASSEMBLE SIDE-BY-SIDE WITHOUT THE "+" ERROR
