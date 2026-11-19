@@ -135,7 +135,7 @@ colnames(ANOVA_statistic_table) <- gsub("⍴", "rho", colnames(ANOVA_statistic_t
 # Create Custom Theme and turn on 'parse = TRUE' to process mathematical expressions
 table_grob <- ttheme_default(
   core = list(fg_params = list(col = "black")),
-  colhead = list(fg_params = list(col = "blue2")),
+  colhead = list(fg_params = list(col = "black")),
   parse = TRUE #<-- IMPORTANT: Tells R to translate "rho" into the Greek letter 
 )
 
