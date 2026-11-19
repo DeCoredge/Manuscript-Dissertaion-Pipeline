@@ -34,7 +34,7 @@ by eDNA.
 
 **Spearman rank correlations (ρ)** — two scales:
 
-- *Trawl-wide* (pooled across all stations): ρ between trawl catch (count or biomass) and
+- *Broad-scale* (pooled across all stations): ρ between trawl catch (count or biomass) and
   eDNA read counts, computed separately for each eDNA sample type and for a pooled signal.
   Tests whether species that are more abundant in the trawl also tend to have higher eDNA reads.
 - *Station-level*: ρ computed within each station across species, shown as a grouped bar chart.
@@ -50,7 +50,7 @@ for each eDNA sample type and for the average pooled signal across all sample ty
 - `*_by_station.csv` — one row per station × species; columns for trawl count/biomass,
   trawl relative abundance, and eDNA relative read counts for each sample type plus a pooled
   (max-reads) column.
-- `*_trawl_wide.csv` — one row per sample type × species; mean and SD of trawl and eDNA
+- `*_pooled.csv` — one row per sample type × species; mean and SD of trawl and eDNA
   relative abundances across all paired stations.
 
 ---
@@ -257,7 +257,7 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
   n_before_taxa <- n_distinct(df_long$species)
   df_long <- df_long %>%
     left_join(taxa_totals, by = "species") %>%
-    filter(total_reads_taxon >= 20) %>%
+    filter(total_reads_taxon >= 5) %>%
     select(-total_reads_taxon)
   n_after_taxa <- n_distinct(df_long$species)
   cat("Run", run_label, "— taxa removed (< 20 reads):", n_before_taxa - n_after_taxa,
@@ -271,7 +271,7 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
   n_before_samp <- n_distinct(df_long$sample_id)
   df_long <- df_long %>%
     left_join(sample_totals_run, by = "sample_id") %>%
-    filter(total_reads_sample >= 1000) %>%
+    filter(total_reads_sample >= 500) %>%
     select(-total_reads_sample)
   n_after_samp <- n_distinct(df_long$sample_id)
   cat("Run", run_label, "— samples removed (< 1000 reads):", n_before_samp - n_after_samp,
@@ -1024,8 +1024,8 @@ for (strategy_name in names(strategies)) {
 
   make_abund_barplot <- function(df_long, subtitle = NULL, not_detected_sp = character(0)) {
     method_colors <- c(
-      "Trawl Biomass"    = "#F08080",
-      "eDNA Read Counts" = "#45B8AC"
+      "Trawl Biomass"    = "#000000",
+      "eDNA Read Counts" = "#BFBFBF"
     )
     sp_order <- df_long %>%
       filter(method == primary_label) %>%
@@ -1136,7 +1136,7 @@ for (strategy_name in names(strategies)) {
   }
 
   # ── 8. Relative Read Count Export ───────────────────────────────────────────
-  output_dir <- if (exists("path_analysis")) path_analysis else "."
+  output_dir <- "/output"
   base_name  <- paste0("relative_reads_", tolower(gsub(" ", "_", taxon_label)),
                         "_trawl_species_", strategy_name)
 
@@ -1236,7 +1236,7 @@ for (strategy_name in names(strategies)) {
            mean_edna_rel_read_count, sd_edna_rel_read_count) %>%
     arrange(sample_type, desc(mean_edna_rel_read_count))
 
-  fname_wide <- paste0(base_name, "_trawl_wide.csv")
+  fname_wide <- paste0(base_name, "_pooled.csv")
   write_csv(relreads_wide, file.path(output_dir, fname_wide))
   cat("Exported:", fname_wide, "\n\n")
 
