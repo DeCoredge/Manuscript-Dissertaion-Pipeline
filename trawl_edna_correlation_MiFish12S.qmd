@@ -69,6 +69,8 @@ library(patchwork)
 library(knitr)
 library(kableExtra)
 library(broom)
+library(here)
+library(ggpattern)
 
 # ── USER: Update these file paths ────────────────────────────────────────────
 trawl_file       <- "inputs/trawl_taxa_subset.csv"           # Long-format trawl CSV
@@ -260,7 +262,7 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
     filter(total_reads_taxon >= 5) %>%
     select(-total_reads_taxon)
   n_after_taxa <- n_distinct(df_long$species)
-  cat("Run", run_label, "— taxa removed (< 20 reads):", n_before_taxa - n_after_taxa,
+  cat("Run", run_label, "— taxa removed (< 5 reads):", n_before_taxa - n_after_taxa,
       "| taxa retained:", n_after_taxa, "\n")
 
   # ── Filter 2: drop samples with fewer than 1000 total reads ──────────────────
@@ -274,7 +276,7 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
     filter(total_reads_sample >= 500) %>%
     select(-total_reads_sample)
   n_after_samp <- n_distinct(df_long$sample_id)
-  cat("Run", run_label, "— samples removed (< 1000 reads):", n_before_samp - n_after_samp,
+  cat("Run", run_label, "— samples removed (< 500 reads):", n_before_samp - n_after_samp,
       "| samples retained:", n_after_samp, "\n")
 
   df_long
@@ -843,7 +845,7 @@ for (strategy_name in names(strategies)) {
 
   p_venn <- ggvenn(
     list("Trawl" = trawl_sp_set, "Any eDNA" = edna_sp_set),
-    fill_color    = c("#F08080", "#45B8AC"),
+    fill_color    = c("#808080", "#D0D0D0"),
     stroke_size   = 0.5,
     set_name_size = 4,
     text_size     = 3.5
@@ -943,9 +945,11 @@ for (strategy_name in names(strategies)) {
     all_types  <- sort(unique(spearman_station$sample_type))
     pooled_lbl <- unique(paired_pooled$sample_type)
     n_real     <- length(setdiff(all_types, pooled_lbl))
-    pal_real   <- if (n_real > 0)
-      RColorBrewer::brewer.pal(max(3, n_real), "Set2")[seq_len(n_real)] else character(0)
-    type_colors <- setNames(c(pal_real, "#555555"),
+    # Greyscale ramp for real sample types (dark → light); pooled always gets near-black
+    grey_steps <- if (n_real > 0)
+      grey.colors(n_real, start = 0.25, end = 0.80) else character(0)
+    pal_real   <- grey_steps
+    type_colors <- setNames(c(pal_real, "#111111"),
                             c(setdiff(all_types, pooled_lbl), pooled_lbl))
 
     p_station <- ggplot(spearman_station,
@@ -1022,6 +1026,12 @@ for (strategy_name in names(strategies)) {
     group_by(species) %>%
     summarise(mean_edna_rel = mean(avg_rel, na.rm = TRUE), .groups = "drop")
 
+  # Body-type lookup for hatch patterns (species → Slimy / Crunchy)
+  body_type_map <- lookup %>%
+    filter(species %in% focal_sp) %>%
+    select(species, body_type) %>%
+    distinct()
+
   make_abund_barplot <- function(df_long, subtitle = NULL, not_detected_sp = character(0)) {
     method_colors <- c(
       "Trawl Biomass"    = "#000000",
@@ -1034,12 +1044,16 @@ for (strategy_name in names(strategies)) {
     sp_order <- c(sp_order, setdiff(unique(df_long$species), sp_order))
 
     df_long <- df_long %>%
-      mutate(species = factor(species, levels = sp_order),
-             mean_rel_abund = ifelse(is.nan(mean_rel_abund), 0, mean_rel_abund))
+      left_join(body_type_map, by = "species") %>%
+      mutate(
+        body_type      = if_else(is.na(body_type), "Unknown", body_type),
+        species        = factor(species, levels = sp_order),
+        mean_rel_abund = ifelse(is.nan(mean_rel_abund), 0, mean_rel_abund)
+      )
 
     # Build x-axis labels: append " (x)" for species not detected by eDNA
     sp_levels <- levels(df_long$species)
-    axis_labels <- if_else(
+    axis_labels <- ifelse(
       sp_levels %in% not_detected_sp,
       paste0(sp_levels, " (x)"),
       sp_levels
@@ -1050,10 +1064,47 @@ for (strategy_name in names(strategies)) {
       species = factor(not_detected_sp, levels = sp_levels)
     ) %>% filter(!is.na(species))
 
-    p <- ggplot(df_long, aes(x = species, y = mean_rel_abund,
-                        fill = factor(method, levels = c(primary_label, "eDNA Read Counts")))) +
-      geom_col(position = position_dodge2(padding = 0), width = 0.8) +
+    # Hatch pattern: Crunchy = diagonal stripe, Slimy/Unknown = solid (none)
+    body_types_present <- sort(unique(df_long$body_type))
+    pattern_map <- setNames(
+      ifelse(body_types_present == "Crunchy", "stripe", "none"),
+      body_types_present
+    )
+    pattern_angle_map <- setNames(
+      ifelse(body_types_present == "Crunchy", 45, 0),
+      body_types_present
+    )
+
+    p <- ggplot(df_long,
+                aes(x      = species,
+                    y      = mean_rel_abund,
+                    fill   = factor(method, levels = c(primary_label, "eDNA Read Counts")),
+                    colour = factor(method, levels = c(primary_label, "eDNA Read Counts")),
+                    pattern       = body_type,
+                    pattern_angle = body_type)) +
+      ggpattern::geom_col_pattern(
+        position         = position_dodge2(padding = 0),
+        width            = 0.8,
+        pattern_density  = 0.5,
+        pattern_spacing  = 0.015,
+        pattern_fill     = "white",
+        pattern_colour   = "white"
+      ) +
       scale_fill_manual(values = method_colors, name = "Method") +
+      scale_colour_manual(values = method_colors, guide = "none") +
+      ggpattern::scale_pattern_manual(
+        values = pattern_map,
+        name   = "Body type"
+      ) +
+      ggpattern::scale_pattern_angle_manual(
+        values = pattern_angle_map,
+        guide  = "none"
+      ) +
+      guides(
+        fill = guide_legend(
+          override.aes = list(pattern = "none", colour = method_colors)
+        )
+      ) +
       scale_y_continuous(
         labels = scales::label_number(accuracy = 0.01),
         expand = expansion(mult = c(0, 0.10))
@@ -1077,7 +1128,7 @@ for (strategy_name in names(strategies)) {
         legend.position  = "right",
         legend.title     = element_text(face = "bold"),
         panel.grid.minor = element_blank(),
-        plot.margin      = margin(t = 5, r = 10, b = 5, l = 30, unit = "pt")
+        plot.margin      = margin(t = 5, r = 10, b = 5, l = 70, unit = "pt")
       )
 
     # Add "x" marker above the zero line for each undetected species
@@ -1133,10 +1184,26 @@ for (strategy_name in names(strategies)) {
       subtitle     = paste0("[", strategy_name, "] Pooled eDNA & trawl-wide — average across all sample types"),
       not_detected_sp = not_det_pooled
     ))
+
+    # ── Export pooled barplot for manuscript ──────────────────────────────────
+    if (strategy_name == "average") {
+      p_export <- make_abund_barplot(
+        df_long_pooled,
+        subtitle        = paste0("[", strategy_name, "] Pooled eDNA & trawl-wide — average across all sample types"),
+        not_detected_sp = not_det_pooled
+      )
+      ggsave(
+        filename = file.path(here::here("output"),
+                             paste0(taxon_label, "_barplot_average_pooled.pdf")),
+        plot   = p_export + labs(title = NULL),
+        width  = 10, height = 6, units = "in"
+      )
+    }
   }
 
   # ── 8. Relative Read Count Export ───────────────────────────────────────────
-  output_dir <- "/output"
+  output_dir <- here::here("output")
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   base_name  <- paste0("relative_reads_", tolower(gsub(" ", "_", taxon_label)),
                         "_trawl_species_", strategy_name)
 

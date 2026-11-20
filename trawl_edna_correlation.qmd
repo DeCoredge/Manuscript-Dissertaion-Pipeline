@@ -1,5 +1,5 @@
 ---
-title: "Trawl vs. eDNA Metabarcoding: Community Survey Comparison"
+title: "Trawl vs. eDNA Metabarcoding: Survey Comparison"
 author: ""
 date: today
 format:
@@ -20,11 +20,38 @@ execute:
 
 # Overview
 
-This report harmonizes paired trawl survey and eDNA metabarcoding datasets collected at the same stations, then tests:
+This report harmonizes paired trawl survey and eDNA metabarcoding datasets
+collected at the same stations and evaluates how well eDNA read abundance tracks trawl catch.
+All analyses are run under two normalization strategies — **representative_sample** (keep the
+highest-diversity sample per station × sample type) and **average** (TSS-normalize then
+average all replicates) — and results are labelled accordingly throughout.
 
-1. **Rank correlation** (Spearman's ρ) between trawl catch and eDNA read abundance
-2. **Relative abundance correlation** across all paired station × species observations
-3. **Differences among eDNA sample types** (e.g. filter type, replicate type) in their correlation with trawl data
+## What this report produces
+
+**Species overlap tables** — per station × eDNA sample type: how many species were detected by
+trawl only, eDNA only, or both, and what percentage of trawl-detected species were recovered
+by eDNA.
+
+**Spearman rank correlations (ρ)** — two scales:
+
+- *Broad-scale* (pooled across all stations): ρ between trawl catch (count or biomass) and
+  eDNA read counts, computed separately for each eDNA sample type and for a pooled signal.
+  Tests whether species that are more abundant in the trawl also tend to have higher eDNA reads.
+- *Station-level*: ρ computed within each station across species, shown as a grouped bar chart.
+  Tests whether, at a given location, the relative species composition in the trawl is reflected
+  in the eDNA community profile.
+
+**Relative abundance barplots** — mean proportion abundance across stations, comparing trawl
+biomass and eDNA read counts side-by-side for each trawl-detected species. Shown separately
+for each eDNA sample type and for the average pooled signal across all sample types.
+
+**CSV exports** (written to the output directory):
+
+- `*_by_station.csv` — one row per station × species; columns for trawl count/biomass,
+  trawl relative abundance, and eDNA relative read counts for each sample type plus a pooled
+  (max-reads) column.
+- `*_pooled.csv` — one row per sample type × species; mean and SD of trawl and eDNA
+  relative abundances across all paired stations.
 
 ---
 
@@ -42,12 +69,14 @@ library(patchwork)
 library(knitr)
 library(kableExtra)
 library(broom)
+library(here)
+library(ggpattern)
 
 # ── USER: Update these file paths ────────────────────────────────────────────
 trawl_file       <- "inputs/trawl_taxa_subset.csv"           # Long-format trawl CSV
 edna_spp_files   <- c(                          # One entry per sequencing run —
-  run1 = "inputs/SPECIES_counts_Run1.csv"        #   named with a short run label
-  # run2 = "inputs/SPECIES_counts_Run2.csv"      #   add more runs here as needed
+  run1 = "inputs/SPECIES_counts_Run1.csv",      #   named with a short run label
+  run2 = "inputs/SPECIES_counts_Run2.csv"       #   add or remove entries as needed
 )
 edna_meta_file   <- "inputs/Metabarcoding_Metadata.csv"     # Sample metadata — must cover ALL runs
 lookup_file      <- "inputs/species_types.csv"              # Common-name ↔ binomial lookup table
@@ -67,26 +96,17 @@ edna_tax_col       <- "full_tax"       # Full taxonomy string column
 meta_sample_col    <- "ReadFile"       # Unique sample ID matching column names in eDNA tables
                                        #   NOTE: must match the sample column headers in the species table
 meta_station_col   <- "TrawlID"        # Station identifier (matches trawl station IDs)
-meta_type_col      <- "Sample_type"    # Column distinguishing sample types
+meta_type_col      <- "Sample_type"    # Column distinguishing the sample types
 meta_run_col       <- "RunID"          # Sequencing run identifier column in metadata
 meta_primer_col    <- "Primer"         # Primer/amplicon column in metadata (set to NA if absent)
 
-# ── USER: Primer filter ───────────────────────────────────────────────────────
-# Restrict to samples sequenced with specific primer(s). Set to NULL to keep all.
-# Examples:
-#   Ceph18S  → valid_primers <- c("Ceph18S")
-#   MiFish   → valid_primers <- c("MiFish12S")
-#   LerayCOI → valid_primers <- c("LerayCOI")
-valid_primers <- NULL        # ← change to your primer name(s) or leave NULL
-# ─────────────────────────────────────────────────────────────────────────────
+# Primer(s) to KEEP — only samples sequenced with this primer are used.
+# This prevents mixing amplicons when the metadata covers multiple primer sets.
+# Set to NULL to keep all primers.
+valid_primers <- NULL                  # e.g. c("MiFish12S") or NULL to skip filter
 
-# ── USER: Sample types to keep ───────────────────────────────────────────────
-# List the valid environmental sample types (all others — controls, mocks, NTCs — are excluded).
-# Examples:
-#   Ceph18S / MiFish → valid_sample_types <- c("Bottom_metaprobe", "Top_metaprobe", "Slush")
-#   LerayCOI         → valid_sample_types <- c("eDNA_filter", "water_sample")   # adjust as needed
+# Sample types to KEEP (all others — controls, mocks, NTCs — are excluded)
 valid_sample_types <- c("Bottom_metaprobe", "Top_metaprobe", "Slush")
-# ─────────────────────────────────────────────────────────────────────────────
 
 # Station ID value used for controls/blanks that should be excluded
 invalid_station_values <- c("NA", "", "na")
@@ -97,51 +117,45 @@ lookup_binom_col   <- "Species"        # Binomial name → matches eDNA species
 lookup_group_col   <- "Fish_Invert"    # Taxonomic group (Fish / Invertebrate)
 lookup_type_col    <- "Body_Type"      # Body type (Slimy / Crunchy)
 
-# ── USER: Stations to exclude ────────────────────────────────────────────────
-# List any trawl station IDs to remove from ALL analyses (trawl + eDNA).
-# Useful when eDNA samples failed at a station and you want to drop it entirely.
-# Set to NULL to keep all stations.
-exclude_stations <- NULL     # e.g. c("FL23072", "FL23101") or NULL
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── USER: Species pooling map ─────────────────────────────────────────────────
-# Some loci cannot distinguish species within a genus. Use this to pool them.
-# Named character vector: names are regex patterns (anchored to start), values
-# are the pooled label. The patterns are matched case-insensitively.
-# Set to NULL to skip species pooling.
-#
-# Examples:
-#   MiFish12S  → pool_species_map <- c("^Alosa "        = "Alosa spp.",
-#                                       "^Myoxocephalus " = "Myoxocephalus spp.")
-#   Ceph18S    → pool_species_map <- NULL  (species are distinguishable)
-#   LerayCOI   → pool_species_map <- NULL  (or add any genus-level ambiguities)
-pool_species_map <- NULL     # ← set to named character vector or NULL
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── USER: Taxon group filter ──────────────────────────────────────────────────
-# Restrict all analyses to one taxonomic group. Options:
-#   "Fish"          — keep only rows where taxon_group == "Fish"
-#   "Invertebrate"  — keep only rows where taxon_group == "Invertebrate"
-#   "Cephalopod"    — keep only the species listed in cephalopod_species below
-#   NULL            — no filter; use all species
-taxon_filter <- NULL   # ← set to "Fish", "Invertebrate", "Cephalopod", or NULL
-
-# Species included when taxon_filter == "Cephalopod"
-cephalopod_species <- c("Illex illecebrosus", "Doryteuthis pealeii", "Bathypolypus arcticus")
-# ─────────────────────────────────────────────────────────────────────────────
-
 # ── USER: Sample type pooling strategy for Spearman correlations ─────────────
 # How to pool eDNA reads across sample types for the "Pooled" Spearman analysis:
 #   "max_reads"  — per station, keep only the sample_type with the highest total
 #                  read count. Preserves the strongest signal; recommended.
 #   "mean"       — average edna_reads across sample types per station × species.
 #                  Conservative; reduces influence of any single sample type.
-pool_strategy <- "max_reads"   # ← "max_reads" or "mean"
+pool_strategy <- "mean"   # ← "max_reads" or "mean"
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── USER: Read and sample quality filters ────────────────────────────────────
-min_reads_per_taxon  <- 20      # Remove taxa with fewer than this many raw reads (per run)
-min_reads_per_sample <- 1000    # Drop samples with fewer than this many total reads
+# ── USER: Stations to exclude ────────────────────────────────────────────────
+# List any trawl station IDs to remove from ALL analyses (trawl + eDNA).
+# Useful when eDNA samples failed at a station and you want to drop it entirely.
+# Set to NULL to keep all stations.
+exclude_stations <- NULL   # e.g. c("FL23072", "FL23101") or NULL
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── USER: Species pooling ─────────────────────────────────────────────────────
+# Collapse indistinguishable taxa before all analyses. Named character vector:
+#   names  = genus prefixes to match (regex, case-insensitive, anchored to start)
+#   values = pooled label to use in their place
+# Set to NULL to skip species pooling entirely.
+# Examples:
+#   MiFish 12S  → pool_genus_map <- c("^Alosa " = "Alosa spp.", "^Myoxocephalus " = "Myoxocephalus spp.", "^Sebastes " = "Sebastes spp.")
+#   Ceph18S     → pool_genus_map <- NULL
+#   LerayCOI    → pool_genus_map <- NULL
+pool_genus_map <- NULL
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── USER: Taxon group filter ──────────────────────────────────────────────────
+# Restrict all analyses to one taxonomic group. Options:
+#   "Fish"          — keep only rows where taxon_group == "Fish"
+#   "Invertebrate"  — keep only rows where taxon_group == "Invertebrate"
+#   "Cephalopod"    — keep only Illex illecebrosus, Doryteuthis pealeii,
+#                     and Bathypolypus arcticus (case-insensitive)
+#   NULL            — no filter; use all species
+taxon_filter <- NULL   # ← set to "Fish", "Invertebrate", "Cephalopod", or NULL
+
+# Species included when taxon_filter == "Cephalopod"
+cephalopod_species <- c("Illex illecebrosus", "Doryteuthis pealeii", "Bathypolypus arcticus")
 # ─────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -230,9 +244,7 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
     filter(reads > 0) %>%
     mutate(seq_run = run_label)
 
-  # ── Filter 1: remove taxa with fewer than min_reads_per_taxon reads ──────────
-  # (raw reads, before TSS normalization — applied per-taxon across all samples
-  #  within this run, to remove very low-confidence assignments)
+  # ── Filter 1: remove taxa with fewer than XX reads ───────────────────────────
   taxa_totals <- df_long %>%
     group_by(species) %>%
     summarise(total_reads_taxon = sum(reads, na.rm = TRUE), .groups = "drop")
@@ -240,13 +252,13 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
   n_before_taxa <- n_distinct(df_long$species)
   df_long <- df_long %>%
     left_join(taxa_totals, by = "species") %>%
-    filter(total_reads_taxon >= min_reads_per_taxon) %>%
+    filter(total_reads_taxon >= 20) %>%
     select(-total_reads_taxon)
   n_after_taxa <- n_distinct(df_long$species)
-  cat("Run", run_label, "— taxa removed (< ", min_reads_per_taxon, " reads):",
-      n_before_taxa - n_after_taxa, "| taxa retained:", n_after_taxa, "\n")
+  cat("Run", run_label, "— taxa removed (< 20 reads):", n_before_taxa - n_after_taxa,
+      "| taxa retained:", n_after_taxa, "\n")
 
-  # ── Filter 2: drop samples with fewer than min_reads_per_sample total reads ──
+  # ── Filter 2: drop samples with fewer than XXX total reads ──────────────────
   sample_totals_run <- df_long %>%
     group_by(sample_id) %>%
     summarise(total_reads_sample = sum(reads, na.rm = TRUE), .groups = "drop")
@@ -254,11 +266,11 @@ edna_long_runs <- map(edna_spp_raw_list, function(df) {
   n_before_samp <- n_distinct(df_long$sample_id)
   df_long <- df_long %>%
     left_join(sample_totals_run, by = "sample_id") %>%
-    filter(total_reads_sample >= min_reads_per_sample) %>%
+    filter(total_reads_sample >= 500) %>%
     select(-total_reads_sample)
   n_after_samp <- n_distinct(df_long$sample_id)
-  cat("Run", run_label, "— samples removed (< ", min_reads_per_sample, " reads):",
-      n_before_samp - n_after_samp, "| samples retained:", n_after_samp, "\n")
+  cat("Run", run_label, "— samples removed (< 500 reads):", n_before_samp - n_after_samp,
+      "| samples retained:", n_after_samp, "\n")
 
   df_long
 })
@@ -278,33 +290,28 @@ iwalk(edna_long_runs, ~ cat("  Run", .y, "—",
 **Why normalize?** Read depth varies between sequencing runs, so raw read counts are not
 directly comparable across runs. We use Total Sum Scaling (TSS) — dividing each sample's
 reads by its total reads — to convert to within-sample proportions before combining runs.
-Downstream analyses use these normalized values; the heatmaps display them as proportions
-rather than raw counts.
+Downstream analyses use these normalized values.
 
 **Why deduplicate?** If the same station × sample_type combination appears in both runs,
-we keep only one representative sample to avoid pseudo-replication in the correlation
-analyses.
+we keep only one representative sample to avoid pseudo-replication in the correlation analyses.
 
 ```{r run-normalize-dedup}
 # ── Step 1: attach metadata to get station + sample_type per sample ───────────
 meta_clean_pre <- meta_raw %>%
   rename(
-    sample_id   = all_of(meta_sample_col),   # ReadFile — matches species table columns
-    station     = all_of(meta_station_col),   # TrawlID
-    sample_type = all_of(meta_type_col)       # Sample_type
+    sample_id   = all_of(meta_sample_col),
+    station     = all_of(meta_station_col),
+    sample_type = all_of(meta_type_col)
   ) %>%
-  # Filter to the target primer(s) if specified
   { if (!is.null(valid_primers) && meta_primer_col %in% names(.))
       filter(., .data[[meta_primer_col]] %in% valid_primers)
     else . } %>%
-  # Filter out controls, mocks, NTCs and rows with invalid station IDs
   filter(
     sample_type %in% valid_sample_types,
     !is.na(station),
     !tolower(str_squish(station)) %in% tolower(invalid_station_values)
   )
 
-# Report primer filtering
 if (!is.null(valid_primers) && meta_primer_col %in% names(meta_raw)) {
   all_primers <- sort(unique(meta_raw[[meta_primer_col]]))
   cat("Primers in metadata:", paste(all_primers, collapse = ", "), "\n")
@@ -314,7 +321,6 @@ cat("Metadata rows after filtering controls + primer:", nrow(meta_clean_pre), "\
 cat("Sample types retained:", paste(sort(unique(meta_clean_pre$sample_type)), collapse = ", "), "\n")
 cat("Stations:", paste(sort(unique(meta_clean_pre$station)), collapse = ", "), "\n")
 
-# Attach seq_run from metadata if column exists; otherwise use the run tag from the file
 if (meta_run_col %in% names(meta_raw)) {
   meta_clean_pre <- meta_clean_pre %>%
     rename(seq_run_meta = all_of(meta_run_col))
@@ -328,7 +334,6 @@ edna_with_meta <- edna_long_all %>%
             by = "sample_id") %>%
   mutate(seq_run = coalesce(seq_run_meta, seq_run)) %>%
   select(-seq_run_meta) %>%
-  # Drop any samples that didn't match valid metadata (controls etc.)
   filter(!is.na(station), !is.na(sample_type))
 
 cat("\neDNA observations after joining metadata:", nrow(edna_with_meta), "\n")
@@ -342,7 +347,7 @@ sample_totals <- edna_with_meta %>%
 
 edna_norm <- edna_with_meta %>%
   left_join(sample_totals, by = c("sample_id", "seq_run")) %>%
-  mutate(reads_tss = reads / total_reads)   # proportion within sample
+  mutate(reads_tss = reads / total_reads)
 
 cat("TSS normalization check — NA total_reads:", sum(is.na(edna_norm$total_reads)), "\n")
 
@@ -351,12 +356,10 @@ sample_index <- edna_norm %>%
   distinct(sample_id, station, sample_type, seq_run) %>%
   filter(!is.na(station), !is.na(sample_type))
 
-# Count species per sample (used for representative_sample strategy)
 species_per_sample <- edna_norm %>%
   group_by(sample_id) %>%
   summarise(n_species = n_distinct(species), .groups = "drop")
 
-# Find station × sample_type groups that span more than one sequencing run
 run_per_group <- sample_index %>%
   group_by(station, sample_type) %>%
   summarise(runs_present = list(sort(unique(seq_run))),
@@ -374,10 +377,6 @@ if (nrow(dup_groups) == 0) {
   print(dup_groups %>% select(station, sample_type, n_runs))
 
   # ── Strategy A: representative_sample ────────────────────────────────────────
-  # For each duplicated station × sample_type, keep the SAMPLE with the most
-  # species (highest diversity). Within a run's replicates, pick the best one
-  # (most species) as the representative; then use just that one sample.
-  # Non-duplicated groups: keep all samples (replicates will be averaged later).
   run_depth <- sample_index %>%
     left_join(sample_totals,     by = c("sample_id", "seq_run")) %>%
     left_join(species_per_sample, by = "sample_id") %>%
@@ -405,7 +404,8 @@ if (nrow(dup_groups) == 0) {
               by = c("station", "sample_type")) %>%
     filter(
       is.na(preferred_run) |
-      (seq_run == preferred_run & sample_id == preferred_sample)
+      (seq_run == preferred_run &
+       sample_id == preferred_sample)
     ) %>%
     select(-preferred_run, -preferred_sample)
 
@@ -414,15 +414,11 @@ if (nrow(dup_groups) == 0) {
       n_distinct(edna_norm$sample_id), "\n")
 
   # ── Strategy B: average ───────────────────────────────────────────────────────
-  # TSS-normalize each sample (already done in edna_norm), then average reads_tss
-  # across ALL samples for the same station × sample_type × species — even across
-  # runs. Averaging happens in edna_agg (section 2e).
   edna_long_average <- edna_norm
   cat("average: all samples retained (", n_distinct(edna_long_average$sample_id),
       "); duplicates averaged in edna_agg\n", sep = "")
 }
 
-# Summary of run composition
 for (strategy_label in c("representative_sample", "average")) {
   elong <- if (strategy_label == "representative_sample") edna_long_representative else edna_long_average
   run_summary <- elong %>%
@@ -433,7 +429,6 @@ for (strategy_label in c("representative_sample", "average")) {
   print(run_summary)
 }
 
-# ── Active edna_long alias (updated after station exclusion below) ────────────
 edna_long <- edna_long_representative
 ```
 
@@ -444,7 +439,6 @@ The trawl uses common names; the eDNA table uses binomial names. The lookup tabl
 and flags any common names not found in the lookup.
 
 ```{r lookup-join}
-# Clean lookup table
 lookup <- lookup_raw %>%
   rename(
     common_name  = all_of(lookup_common_col),
@@ -458,11 +452,9 @@ lookup <- lookup_raw %>%
   ) %>%
   select(common_name, species, taxon_group, body_type)
 
-# Join binomial name onto trawl aggregated data
 trawl_agg <- trawl_agg %>%
   left_join(lookup, by = "common_name")
 
-# Report any trawl common names missing from the lookup
 unmatched_trawl <- trawl_agg %>%
   filter(is.na(species)) %>%
   distinct(common_name)
@@ -474,7 +466,6 @@ if (nrow(unmatched_trawl) > 0) {
   cat("✓ All trawl common names matched in lookup table.\n")
 }
 
-# Report eDNA binomials not in lookup (across all runs)
 all_edna_species <- map(edna_spp_raw_list, ~ {
   .x %>%
     pull(.data[[edna_species_col]]) %>%
@@ -487,7 +478,6 @@ cat("\neDNA species not in lookup table (", length(unmatched_edna), "):",
     paste(head(unmatched_edna, 10), collapse = ", "),
     if (length(unmatched_edna) > 10) "..." else "", "\n")
 
-# Keep only trawl records with a matched binomial
 trawl_agg <- trawl_agg %>% filter(!is.na(species))
 
 # ── Taxon group filter ────────────────────────────────────────────────────────
@@ -508,70 +498,58 @@ if (!is.null(taxon_filter)) {
   cat("No taxon filter applied — all", nrow(trawl_agg), "trawl records retained\n")
 }
 
-# Derive the group label used in plot titles
 taxon_label <- if (is.null(taxon_filter)) "All species" else taxon_filter
 ```
 
 ## 2d-i. Species Pooling for Indistinguishable Taxa
 
-Some loci cannot reliably distinguish species within a genus. If `pool_species_map` is set,
-ambiguous species are collapsed to genus-level labels (e.g. *Alosa spp.*) in both trawl
-and eDNA data before any further analyses.
+Some amplicons cannot reliably distinguish species within certain genera.
+Pool those taxa before all analyses using `pool_genus_map` defined above.
 
 ```{r pool-species}
-# ── Helper: pool species names using pool_species_map ─────────────────────────
-# pool_species_map is a named character vector:
-#   names  = regex patterns matched against species names (case-insensitive)
-#   values = replacement pooled label
-# Example: c("^Alosa " = "Alosa spp.", "^Myoxocephalus " = "Myoxocephalus spp.")
-# If pool_species_map is NULL, pool_genus() is a no-op.
 pool_genus <- function(sp_vec) {
-  if (is.null(pool_species_map) || length(pool_species_map) == 0) return(sp_vec)
+  if (is.null(pool_genus_map) || length(pool_genus_map) == 0) return(sp_vec)
   result <- sp_vec
-  for (pattern in names(pool_species_map)) {
-    replacement <- pool_species_map[[pattern]]
-    result <- if_else(str_detect(result, regex(pattern, ignore_case = TRUE)),
-                      replacement, result)
+  for (pattern in names(pool_genus_map)) {
+    result <- if_else(
+      str_detect(result, regex(pattern, ignore_case = TRUE)),
+      pool_genus_map[[pattern]],
+      result
+    )
   }
   result
 }
 
-if (!is.null(pool_species_map) && length(pool_species_map) > 0) {
+trawl_agg_pre <- trawl_agg
+trawl_agg <- trawl_agg %>%
+  mutate(species = pool_genus(species)) %>%
+  group_by(station, species, common_name, taxon_group, body_type) %>%
+  summarise(
+    across(any_of(c("trawl_count", "trawl_weight")), ~ sum(.x, na.rm = TRUE)),
+    .groups = "drop"
+  )
 
-  # ── Pool in trawl_agg ─────────────────────────────────────────────────────────
-  trawl_agg_pre <- trawl_agg
-  trawl_agg <- trawl_agg %>%
-    mutate(species = pool_genus(species)) %>%
-    group_by(station, species, common_name, taxon_group, body_type) %>%
-    summarise(
-      across(any_of(c("trawl_count", "trawl_weight")), ~ sum(.x, na.rm = TRUE)),
-      .groups = "drop"
-    )
+pooled_trawl <- setdiff(unique(trawl_agg_pre$species), unique(trawl_agg$species))
+cat("Trawl species pooled:", paste(pooled_trawl, collapse = ", "), "\n")
+cat("Trawl species after pooling:", n_distinct(trawl_agg$species), "\n")
 
-  pooled_trawl <- setdiff(unique(trawl_agg_pre$species), unique(trawl_agg$species))
-  cat("Trawl species pooled:", paste(pooled_trawl, collapse = ", "), "\n")
-  cat("Trawl species after pooling:", n_distinct(trawl_agg$species), "\n")
+edna_long_pre_pool_n <- n_distinct(edna_long_representative$species)
 
-  # ── Pool in both edna_long strategies ────────────────────────────────────────
-  edna_long_pre_pool_n <- n_distinct(edna_long_representative$species)
+edna_long_representative <- edna_long_representative %>%
+  mutate(species = pool_genus(species))
 
-  edna_long_representative <- edna_long_representative %>%
-    mutate(species = pool_genus(species))
+edna_long_average <- edna_long_average %>%
+  mutate(species = pool_genus(species))
 
-  edna_long_average <- edna_long_average %>%
-    mutate(species = pool_genus(species))
+edna_long <- edna_long_representative
 
-  edna_long <- edna_long_representative
+cat("eDNA species after pooling:", n_distinct(edna_long_representative$species),
+    "(was", edna_long_pre_pool_n, ")\n")
 
-  cat("eDNA species after pooling:", n_distinct(edna_long_representative$species),
-      "(was", edna_long_pre_pool_n, ")\n")
-
-  # ── Extend lookup to include pooled names ─────────────────────────────────────
-  # Derive pooled genus names from the map values
-  pooled_names <- unique(unname(pool_species_map))
-
+if (!is.null(pool_genus_map) && length(pool_genus_map) > 0) {
+  combined_pattern <- paste(names(pool_genus_map), collapse = "|")
   lookup_spp_extra <- lookup %>%
-    filter(pool_genus(species) %in% pooled_names, species != pool_genus(species)) %>%
+    filter(str_detect(species, regex(combined_pattern, ignore_case = TRUE))) %>%
     mutate(species = pool_genus(species)) %>%
     distinct(species, taxon_group, body_type) %>%
     mutate(common_name = species)
@@ -580,10 +558,9 @@ if (!is.null(pool_species_map) && length(pool_species_map) > 0) {
     lookup %>% filter(!species %in% lookup_spp_extra$species),
     lookup_spp_extra
   )
-  cat("Lookup entries after adding pooled rows:", nrow(lookup), "\n")
-
+  cat("Lookup entries after adding spp. rows:", nrow(lookup), "\n")
 } else {
-  cat("No species pooling applied (pool_species_map is NULL).\n")
+  cat("No species pooling — lookup unchanged.\n")
 }
 ```
 
@@ -595,10 +572,10 @@ if (!is.null(exclude_stations) && length(exclude_stations) > 0) {
   n_repr_before  <- n_distinct(edna_long_representative$station)
   n_avg_before   <- n_distinct(edna_long_average$station)
 
-  trawl_agg              <- trawl_agg              %>% filter(!station %in% exclude_stations)
+  trawl_agg                <- trawl_agg                %>% filter(!station %in% exclude_stations)
   edna_long_representative <- edna_long_representative %>% filter(!station %in% exclude_stations)
   edna_long_average        <- edna_long_average        %>% filter(!station %in% exclude_stations)
-  edna_long                <- edna_long_representative  # update alias
+  edna_long                <- edna_long_representative
 
   cat("Excluded stations:", paste(exclude_stations, collapse = ", "), "\n")
   cat("Trawl stations removed:", n_trawl_before - n_distinct(trawl_agg$station),
@@ -623,14 +600,12 @@ normalization/dedup strategy:
 Results are labelled with the strategy name throughout.
 
 ```{r dual-strategy-loop, results='asis'}
-# ── Metadata warning (once, not per strategy) ─────────────────────────────────
 meta_clean <- meta_clean_pre
 missing_meta <- setdiff(unique(edna_long_all$sample_id), meta_clean$sample_id)
 if (length(missing_meta) > 0)
   warning("These sample IDs are in the eDNA table but not in metadata: ",
           paste(missing_meta, collapse = ", "))
 
-# ── Loop over both strategies ─────────────────────────────────────────────────
 strategies <- list(
   representative_sample = edna_long_representative,
   average               = edna_long_average
@@ -643,8 +618,6 @@ for (strategy_name in names(strategies)) {
   cat("## Strategy:", strategy_name, "\n\n")
 
   # ── 2e. eDNA aggregation ────────────────────────────────────────────────────
-  # For 'average': mean() collapses both intra-run replicates and cross-run dups.
-  # For 'representative_sample': only one sample per dup group, so mean() = that sample.
   edna_agg <- edna_long_strat %>%
     filter(!is.na(station), !is.na(sample_type)) %>%
     group_by(station, sample_type, species) %>%
@@ -791,7 +764,7 @@ for (strategy_name in names(strategies)) {
       collapse_rows(columns = 1, valign = "top")
   )
 
-  # ── 3b. Species overlap Venn diagram (survey-wide, any eDNA sample type) ────────
+  # ── 3b. Species overlap Venn diagram ────────────────────────────────────────
   cat("\n### Species overlap Venn diagram [", strategy_name, "]\n\n")
   cat("Pooled across all stations and all eDNA sample types.",
       "A species is counted as eDNA-detected if present in ≥1 sample at ≥1 station.\n\n")
@@ -815,7 +788,7 @@ for (strategy_name in names(strategies)) {
 
   p_venn <- ggvenn(
     list("Trawl" = trawl_sp_set, "Any eDNA" = edna_sp_set),
-    fill_color    = c("#F08080", "#45B8AC"),
+    fill_color    = c("#808080", "#D0D0D0"),
     stroke_size   = 0.5,
     set_name_size = 4,
     text_size     = 3.5
@@ -915,9 +888,9 @@ for (strategy_name in names(strategies)) {
     all_types  <- sort(unique(spearman_station$sample_type))
     pooled_lbl <- unique(paired_pooled$sample_type)
     n_real     <- length(setdiff(all_types, pooled_lbl))
-    pal_real   <- if (n_real > 0)
-      RColorBrewer::brewer.pal(max(3, n_real), "Set2")[seq_len(n_real)] else character(0)
-    type_colors <- setNames(c(pal_real, "#555555"),
+    grey_steps <- if (n_real > 0)
+      grey.colors(n_real, start = 0.25, end = 0.80) else character(0)
+    type_colors <- setNames(c(grey_steps, "#111111"),
                             c(setdiff(all_types, pooled_lbl), pooled_lbl))
 
     p_station <- ggplot(spearman_station,
@@ -955,8 +928,6 @@ for (strategy_name in names(strategies)) {
     pull(species) %>% unique() %>% sort()
   cat("Trawl species for barplot:", paste(focal_sp, collapse = ", "), "\n")
 
-  # Per-station relative abundance → mean across stations.
-  # Used for per-sample-type barplots (apples-to-apples with per-station eDNA rel abund).
   trawl_rel_df <- trawl_agg %>%
     filter(station %in% unique(paired$station), species %in% focal_sp) %>%
     group_by(station) %>%
@@ -966,9 +937,6 @@ for (strategy_name in names(strategies)) {
     group_by(species) %>%
     summarise(mean_trawl_rel = mean(trawl_rel, na.rm = TRUE), .groups = "drop")
 
-  # Trawl-wide relative abundance: pool counts/weights across ALL stations first,
-  # then divide once. Used for the pooled barplot so trawl values sum to 1
-  # and are not inflated by species occurring at only one station.
   trawl_rel_wide_df <- trawl_agg %>%
     filter(station %in% unique(paired$station), species %in% focal_sp) %>%
     group_by(species) %>%
@@ -981,9 +949,6 @@ for (strategy_name in names(strategies)) {
     group_by(species, sample_type) %>%
     summarise(mean_edna_rel = mean(edna_rel, na.rm = TRUE), .groups = "drop")
 
-  # Average-across-sample-types pooled eDNA:
-  # For each station × species, average edna_reads across sample types, then
-  # compute relative abundance within-station, then average across stations.
   edna_rel_pooled_df <- paired %>%
     filter(species %in% focal_sp, !is.na(sample_type)) %>%
     group_by(station, species) %>%
@@ -994,10 +959,16 @@ for (strategy_name in names(strategies)) {
     group_by(species) %>%
     summarise(mean_edna_rel = mean(avg_rel, na.rm = TRUE), .groups = "drop")
 
+  # Body-type lookup for hatch patterns (species → Slimy / Crunchy)
+  body_type_map <- lookup %>%
+    filter(species %in% focal_sp) %>%
+    select(species, body_type) %>%
+    distinct()
+
   make_abund_barplot <- function(df_long, subtitle = NULL, not_detected_sp = character(0)) {
     method_colors <- c(
-      "Trawl Biomass"    = "#F08080",
-      "eDNA Read Counts" = "#45B8AC"
+      "Trawl Biomass"    = "#000000",
+      "eDNA Read Counts" = "#BFBFBF"
     )
     sp_order <- df_long %>%
       filter(method == primary_label) %>%
@@ -1006,11 +977,15 @@ for (strategy_name in names(strategies)) {
     sp_order <- c(sp_order, setdiff(unique(df_long$species), sp_order))
 
     df_long <- df_long %>%
-      mutate(species = factor(species, levels = sp_order),
-             mean_rel_abund = ifelse(is.nan(mean_rel_abund), 0, mean_rel_abund))
+      left_join(body_type_map, by = "species") %>%
+      mutate(
+        body_type      = if_else(is.na(body_type), "Unknown", body_type),
+        species        = factor(species, levels = sp_order),
+        mean_rel_abund = ifelse(is.nan(mean_rel_abund), 0, mean_rel_abund)
+      )
 
     sp_levels <- levels(df_long$species)
-    axis_labels <- if_else(
+    axis_labels <- ifelse(
       sp_levels %in% not_detected_sp,
       paste0(sp_levels, " (x)"),
       sp_levels
@@ -1020,10 +995,46 @@ for (strategy_name in names(strategies)) {
       species = factor(not_detected_sp, levels = sp_levels)
     ) %>% filter(!is.na(species))
 
-    p <- ggplot(df_long, aes(x = species, y = mean_rel_abund,
-                        fill = factor(method, levels = c(primary_label, "eDNA Read Counts")))) +
-      geom_col(position = position_dodge2(padding = 0), width = 0.8) +
+    body_types_present <- sort(unique(df_long$body_type))
+    pattern_map <- setNames(
+      ifelse(body_types_present == "Crunchy", "stripe", "none"),
+      body_types_present
+    )
+    pattern_angle_map <- setNames(
+      ifelse(body_types_present == "Crunchy", 45, 0),
+      body_types_present
+    )
+
+    p <- ggplot(df_long,
+                aes(x      = species,
+                    y      = mean_rel_abund,
+                    fill   = factor(method, levels = c(primary_label, "eDNA Read Counts")),
+                    colour = factor(method, levels = c(primary_label, "eDNA Read Counts")),
+                    pattern       = body_type,
+                    pattern_angle = body_type)) +
+      ggpattern::geom_col_pattern(
+        position         = position_dodge2(padding = 0),
+        width            = 0.8,
+        pattern_density  = 0.5,
+        pattern_spacing  = 0.015,
+        pattern_fill     = "white",
+        pattern_colour   = "white"
+      ) +
       scale_fill_manual(values = method_colors, name = "Method") +
+      scale_colour_manual(values = method_colors, guide = "none") +
+      ggpattern::scale_pattern_manual(
+        values = pattern_map,
+        name   = "Body type"
+      ) +
+      ggpattern::scale_pattern_angle_manual(
+        values = pattern_angle_map,
+        guide  = "none"
+      ) +
+      guides(
+        fill = guide_legend(
+          override.aes = list(pattern = "none", colour = method_colors)
+        )
+      ) +
       scale_y_continuous(
         labels = scales::label_number(accuracy = 0.01),
         expand = expansion(mult = c(0, 0.10))
@@ -1047,7 +1058,7 @@ for (strategy_name in names(strategies)) {
         legend.position  = "right",
         legend.title     = element_text(face = "bold"),
         panel.grid.minor = element_blank(),
-        plot.margin      = margin(t = 5, r = 10, b = 5, l = 30, unit = "pt")
+        plot.margin      = margin(t = 5, r = 10, b = 5, l = 70, unit = "pt")
       )
 
     if (nrow(not_det_df) > 0) {
@@ -1097,13 +1108,14 @@ for (strategy_name in names(strategies)) {
                              "mean_edna_rel"  = "eDNA Read Counts"))
     print(make_abund_barplot(
       df_long_pooled,
-      subtitle        = paste0("[", strategy_name, "] Pooled eDNA & trawl-wide — average across all sample types"),
+      subtitle     = paste0("[", strategy_name, "] Pooled eDNA & trawl-wide — average across all sample types"),
       not_detected_sp = not_det_pooled
     ))
   }
 
   # ── 8. Relative Read Count Export ───────────────────────────────────────────
-  output_dir <- if (exists("path_analysis")) path_analysis else "."
+  output_dir <- here::here("output")
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
   base_name  <- paste0("relative_reads_", tolower(gsub(" ", "_", taxon_label)),
                         "_trawl_species_", strategy_name)
 
@@ -1159,7 +1171,7 @@ for (strategy_name in names(strategies)) {
   write_csv(relreads_by_station, file.path(output_dir, fname_station))
   cat("Exported:", fname_station, "\n")
 
-  all_trawl_st   <- unique(trawl_base$trawl_id)
+  all_trawl_st    <- unique(trawl_base$trawl_id)
   all_edna_stypes <- unique(edna_by_station$sample_type)
 
   trawl_wide_base <- crossing(trawl_id = all_trawl_st, species = trawl_species_set) %>%
@@ -1203,11 +1215,10 @@ for (strategy_name in names(strategies)) {
            mean_edna_rel_read_count, sd_edna_rel_read_count) %>%
     arrange(sample_type, desc(mean_edna_rel_read_count))
 
-  fname_wide <- paste0(base_name, "_trawl_wide.csv")
+  fname_wide <- paste0(base_name, "_pooled.csv")
   write_csv(relreads_wide, file.path(output_dir, fname_wide))
   cat("Exported:", fname_wide, "\n\n")
 
-  # Preview tables
   print(
     relreads_by_station %>%
       mutate(across(where(is.numeric), ~ round(.x, 5))) %>%

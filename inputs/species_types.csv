@@ -1,6 +1,11 @@
 ﻿Common_Name,Species,Note,Fish_Invert,Body_Type
+Octopus Spoonarm,Bathypolypus arcticus,,Cephalopod,Slimy
+Squid Long Finned,Doryteuthis pealeii,,Cephalopod,Slimy
+Squid Short-Finned,Illex illecebrosus,,Cephalopod,Slimy
+Alewife,Alosa pseudoharengus,Alosa spp.,Fish,Slimy
 Alligatorfish,Aspidophoroides monopterygius,,Fish,Slimy
-Blueback Herring/Alewife/American Shad,Alosa spp.,"Alosa aestivalis, A. pseudoharengus, A. sapidissima",Fish,Slimy
+American Shad,Alosa sapidissima,Alosa spp.,Fish,Slimy
+Blueback Herring,Alosa aestivalis,Alosa spp.,Fish,Slimy
 Butterfish,Peprilus triacanthus,,Fish,Slimy
 Cod Atlantic,Gadus morhua,,Fish,Slimy
 Dogfish Spiny,Squalus acanthias,,Fish,Slimy
@@ -21,13 +26,12 @@ Monkfish,Lophius americanus,,Fish,Slimy
 Plaice American (Dab),Hippoglossoides platessoides,,Fish,Slimy
 Pollock,Pollachius pollachius,,Fish,Slimy
 Redfish Acadian Ocean Perch,Sebastes fasciatus,,Fish,Slimy
-Sculpin Longhorn,Myoxocephalus octodecemspinosus,,Fish,Slimy
+Sculpin Longhorn,Myoxocephalus octodecemspinosus,Myoxocephalus spp.,Fish,Slimy
 Sea Raven,Hemitripterinae,,Fish,Slimy
 Skate Barndoor,Dipturus laevis,,Fish,Slimy
-Skate Little,Leucoraja erinacea,,Fish,Slimy
+Skate Little,Leucoraja erinaceus,,Fish,Slimy
 Skate Thorny,Amblyraja radiata,,Fish,Slimy
 Wrymouth,Cryptacanthodes maculatus,,Fish,Slimy
-Comb Jelly,Ctenophora,,Invertebrate,Slimy
 Crab Atlantic Rock,Cancer irroratus,,Invertebrate,Crunchy
 Crab Jonah,Cancer borealis,,Invertebrate,Crunchy
 Crab Toad,Hyas coarctatus,,Invertebrate,Crunchy
@@ -35,16 +39,14 @@ Krill,Euphausiacea,,Invertebrate,Crunchy
 Lobster American,Homarus americanus,,Invertebrate,Crunchy
 Northern Cyclocardia,Cyclocardia borealis,,Invertebrate,Crunchy
 Ocean Quahog ,Artica islandica,,Invertebrate,Crunchy
-Octopus Spoonarm,Bathypolypus arcticus,,Invertebrate,Slimy
 Scallop Sea,Placopecten magellanicus,,Invertebrate,Crunchy
-Sea Anemone,Actiniaria,,Invertebrate,Slimy
-Sea Pen,Pennatulacea,,Invertebrate,Slimy
-Sea Sponges,Porifera spp.,,Invertebrate,Slimy
 Shrimp Crangon,Crangon septemspinosa,,Invertebrate,Crunchy
 Shrimp Dichelo,Dichelopandalus leptocerus,,Invertebrate,Crunchy
 Shrimp Montagui,Pandalus montagui,,Invertebrate,Crunchy
 Shrimp Northern ,Pandalus borealis,,Invertebrate,Crunchy
 Shrimp Norwegian,Pontophilus norvegicus,,Invertebrate,Crunchy
-Squid Long Finned,Doryteuthis pealeii,,Invertebrate,Slimy
-Squid Short-Finned,Illex illecebrosus,,Invertebrate,Slimy
 Star Brittle,Ophiuroidea,,Invertebrate,Crunchy
+Comb Jelly,Ctenophora,,Invertebrate,Slimy
+Sea Anemone,Actiniaria,,Invertebrate,Slimy
+Sea Pen,Pennatulacea,,Invertebrate,Slimy
+Sea Sponges,Porifera spp.,,Invertebrate,Slimy
